@@ -1,7 +1,6 @@
 package com.wcy.eyetracking;
 
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Handler;
@@ -12,17 +11,13 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.ImageView;
 import android.widget.TextView;
-
-import org.json.JSONException;
 
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.Timer;
@@ -30,7 +25,17 @@ import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-public class MainActivity extends AppCompatActivity {
+public class P2pActivity extends AppCompatActivity {
+    final int MTYPE_LOGIN = 0;
+    final int MTYPE_LOGOUT = 1;
+    final int MTYPE_LIST = 2;
+    final int MTYPE_PUNCH = 3;
+    final int MTYPE_PING = 4;
+    final int MTYPE_PONG = 5;
+    final int MTYPE_REPLY = 6;
+    final int MTYPE_TEXT = 7;
+    final int MTYPE_END = 8;
+
     private BlockingQueue<String> _sendQueue=new LinkedBlockingQueue<>();
     DatagramSocket socket= null;
     InetAddress serverAddress=null;
@@ -52,10 +57,39 @@ public class MainActivity extends AppCompatActivity {
         return "192.168.2.100";
     }
 
+    public static int getLength(String s) {
+        int length = 0;
+        for (int i = 0; i < s.length(); i++) {
+            int ascii = Character.codePointAt(s, i);
+            if (ascii >= 0 && ascii <= 255) {
+                length++;
+            } else {
+                length += 2;
+            }
+        }
+        return length;
+    }
+
+    public byte[]IntToByte(int num){
+        byte[]bytes=new byte[4];
+        bytes[0]=(byte) ((num>>24)&0xff);
+        bytes[1]=(byte) ((num>>16)&0xff);
+        bytes[2]=(byte) ((num>>8)&0xff);
+        bytes[3]=(byte) (num&0xff);
+        return bytes;
+    }
+
+    public static byte[] byteMerger(byte[] bt1, byte[] bt2){
+        byte[] bt3 = new byte[bt1.length+bt2.length];
+        System.arraycopy(bt1, 0, bt3, 0, bt1.length);
+        System.arraycopy(bt2, 0, bt3, bt1.length, bt2.length);
+        return bt3;
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+        setContentView(R.layout.activity_p2p);
         handler = new MyHandler(this);
         localAddr=GetLocalAddr();
         Button connBtn=(Button)findViewById(R.id.button);
@@ -92,8 +126,25 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     while(true){
                         String str=_sendQueue.take(); //如果队列空了，一直阻塞
-                        // Log.i("send", str);
-                        byte[] data=(str+"\0").getBytes();
+                        byte[] data= new byte[256];
+                        data[0] = (byte) 137;
+                        data[1] = (byte) 100;
+
+                        data[2] = (byte) 0;
+                        data[3] = (byte) 0;
+
+                        data[4] = (byte) 0;
+                        data[5] = (byte) 0;
+                        data[6] = (byte) 0;
+                        data[7] = (byte) 32;
+
+                        data[8] = (byte) 100; // d
+                        data[9] = (byte) 101; // d
+                        data[10] = (byte) 102; // d
+                        data[22] = (byte) 103; // d
+                        data[23] = (byte) 104; // d
+                        data[24] = (byte) 105; // d
+
                         DatagramPacket packet = new DatagramPacket(data,data.length,serverAddress,port);//指定发送数据、远程IP、远程端口
                         Log.i("send", str + " " + serverAddress.getHostAddress()+ " " + port);
                         socket.send(packet);
@@ -150,15 +201,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private static class MyHandler extends Handler {
-        private final WeakReference<MainActivity> mTarget;
+        private final WeakReference<P2pActivity> mTarget;
 
-        MyHandler(MainActivity target) {
+        MyHandler(P2pActivity target) {
             mTarget = new WeakReference<>(target);
         }
 
         @Override
         public void handleMessage(Message msg) {
-            MainActivity activity = mTarget.get();
+            P2pActivity activity = mTarget.get();
             if (msg.what == 1) {
                 activity.textView.setText("P2P连接成功！");
             } else if (msg.what == 2) {
