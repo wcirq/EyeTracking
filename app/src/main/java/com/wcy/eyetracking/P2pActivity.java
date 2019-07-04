@@ -13,6 +13,8 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.net.DatagramPacket;
@@ -36,13 +38,16 @@ public class P2pActivity extends AppCompatActivity {
     final int MTYPE_TEXT = 7;
     final int MTYPE_END = 8;
 
-    private BlockingQueue<String> _sendQueue=new LinkedBlockingQueue<>();
+    private BlockingQueue<DatagramPacket> _sendQueue=new LinkedBlockingQueue<>();
     DatagramSocket socket= null;
     InetAddress serverAddress=null;
     int port=47240;
     String localAddr;
     private MyHandler handler = null;
     private TextView textView;
+
+    ByteArrayOutputStream byteOut;
+    DataOutputStream dataOut;
 
     private String GetLocalAddr(){
         //获取wifi服务
@@ -90,28 +95,84 @@ public class P2pActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_p2p);
+        byteOut = new ByteArrayOutputStream();
+        dataOut = new DataOutputStream(byteOut);
+
         handler = new MyHandler(this);
         localAddr=GetLocalAddr();
         Button connBtn=(Button)findViewById(R.id.button);
         Button burrowBtn=(Button)findViewById(R.id.button2);
+        Button sendBtn=(Button)findViewById(R.id.button3);
         textView=(TextView) findViewById(R.id.textView);
         final EditText nameEditText=(EditText)findViewById(R.id.editText);
         final EditText distEditText=(EditText)findViewById(R.id.editText2);
+        final EditText sendEditText=(EditText)findViewById(R.id.editText3);
         connBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Log.i("ok",localAddr);
-                boolean is =  _sendQueue.add("001,"+nameEditText.getText()+","+localAddr);//告诉server自己的name和本地ip，远程ip和端口server端是可以直接获取到的
-                Log.i("", String.valueOf(is));
+                try {
+                    byte []body = (localAddr + " " + nameEditText.getText().toString()).getBytes();
+                    dataOut.writeShort(0x8964); // write magic
+                    dataOut.writeShort(MTYPE_LOGIN); // write type
+                    dataOut.writeInt(body.length*8); // write length
+                    dataOut.write(body);
+                    byte []data = byteOut.toByteArray();
+                    byteOut.reset();
+                    DatagramPacket datagramPacket = new DatagramPacket(data,data.length,serverAddress,port);//指定发送数据、远程IP、远程端口
+                    boolean is =  _sendQueue.add(datagramPacket);//告诉server自己的name和本地ip，远程ip和端口server端是可以直接获取到的
+                    Log.i("", String.valueOf(is));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         });
         burrowBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                boolean is =  _sendQueue.add("002,"+distEditText.getText());//告诉server要和谁建立P2P通信
-                Log.i("", String.valueOf(is));
+                try {
+                    String values = distEditText.getText().toString();
+                    byte []body = (values).getBytes();
+                    dataOut.writeShort(0x8964); // write magic
+                    dataOut.writeShort(MTYPE_PUNCH); // write type
+                    dataOut.writeInt(body.length*8); // write length
+                    dataOut.write(body);
+                    byte []data = byteOut.toByteArray();
+                    byteOut.reset();
+
+                    DatagramPacket datagramPacket = new DatagramPacket(data,data.length,InetAddress.getByName(values.split(":")[0]), Integer.parseInt(values.split(":")[1]));//指定发送数据、远程IP、远程端口
+                    boolean is =  _sendQueue.add(datagramPacket);//告诉server自己的name和本地ip，远程ip和端口server端是可以直接获取到的
+                    DatagramPacket datagramPacket1 = new DatagramPacket(data,data.length,serverAddress,port);//指定发送数据、远程IP、远程端口
+                    boolean is1 =  _sendQueue.add(datagramPacket1);//告诉server自己的name和本地ip，远程ip和端口server端是可以直接获取到的
+                    Log.i("", String.valueOf(is1));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
             }
         });
+        sendBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                try {
+                    String host_port = distEditText.getText().toString();
+                    String values = sendEditText.getText().toString();
+                    byte []body = (values).getBytes();
+                    dataOut.writeShort(0x8964); // write magic
+                    dataOut.writeShort(MTYPE_TEXT); // write type
+                    dataOut.writeInt(body.length*8); // write length
+                    dataOut.write(body);
+                    byte []data = byteOut.toByteArray();
+                    byteOut.reset();
+
+                    DatagramPacket datagramPacket = new DatagramPacket(data,data.length,InetAddress.getByName(host_port.split(":")[0]), Integer.parseInt(host_port.split(":")[1]));//指定发送数据、远程IP、远程端口
+                    boolean is =  _sendQueue.add(datagramPacket);//告诉server自己的name和本地ip，远程ip和端口server端是可以直接获取到的
+                    Log.i("", String.valueOf(is));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
         try {
             serverAddress = InetAddress.getByName("106.15.234.102");
             socket = new DatagramSocket(47240);//这个地方是指定本地发送、接收端口
@@ -125,28 +186,8 @@ public class P2pActivity extends AppCompatActivity {
             public void run() {
                 try {
                     while(true){
-                        String str=_sendQueue.take(); //如果队列空了，一直阻塞
-                        byte[] data= new byte[256];
-                        data[0] = (byte) 137;
-                        data[1] = (byte) 100;
-
-                        data[2] = (byte) 0;
-                        data[3] = (byte) 0;
-
-                        data[4] = (byte) 0;
-                        data[5] = (byte) 0;
-                        data[6] = (byte) 0;
-                        data[7] = (byte) 32;
-
-                        data[8] = (byte) 100; // d
-                        data[9] = (byte) 101; // d
-                        data[10] = (byte) 102; // d
-                        data[22] = (byte) 103; // d
-                        data[23] = (byte) 104; // d
-                        data[24] = (byte) 105; // d
-
-                        DatagramPacket packet = new DatagramPacket(data,data.length,serverAddress,port);//指定发送数据、远程IP、远程端口
-                        Log.i("send", str + " " + serverAddress.getHostAddress()+ " " + port);
+                        DatagramPacket packet = _sendQueue.take(); //如果队列空了，一直阻塞
+                        Log.i("send", " " + serverAddress.getHostAddress()+ " " + port);
                         socket.send(packet);
                     }
                 } catch (InterruptedException e) {
@@ -177,7 +218,7 @@ public class P2pActivity extends AppCompatActivity {
                             timer.schedule(new TimerTask() {
                                 @Override
                                 public void run() {
-                                    _sendQueue.add("003,");
+                                    _sendQueue.add(null);
                                 }
                             },1000,1000);
                         }
