@@ -9,9 +9,15 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import com.wcy.eyetracking.util.P2pMessage;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -22,22 +28,13 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class P2pActivity extends AppCompatActivity {
-    final int MTYPE_LOGIN = 0;
-    final int MTYPE_LOGOUT = 1;
-    final int MTYPE_LIST = 2;
-    final int MTYPE_PUNCH = 3;
-    final int MTYPE_PING = 4;
-    final int MTYPE_PONG = 5;
-    final int MTYPE_REPLY = 6;
-    final int MTYPE_TEXT = 7;
-    final int MTYPE_END = 8;
-
     private BlockingQueue<DatagramPacket> _sendQueue=new LinkedBlockingQueue<>();
     DatagramSocket socket= null;
     InetAddress serverAddress=null;
@@ -45,9 +42,17 @@ public class P2pActivity extends AppCompatActivity {
     String localAddr;
     private MyHandler handler = null;
     private TextView textView;
+    P2pMessage message;
 
     ByteArrayOutputStream byteOut;
     DataOutputStream dataOut;
+
+    ArrayAdapter<String> adapter;
+    ListView listView;
+    ArrayList<String> list_data;
+    String target_host_port=null;
+
+    Button sendBtn;
 
     private String GetLocalAddr(){
         //获取wifi服务
@@ -97,15 +102,43 @@ public class P2pActivity extends AppCompatActivity {
         setContentView(R.layout.activity_p2p);
         byteOut = new ByteArrayOutputStream();
         dataOut = new DataOutputStream(byteOut);
-
+        message = new P2pMessage();
         handler = new MyHandler(this);
         localAddr=GetLocalAddr();
+        listView = findViewById(R.id.list_item);
+        list_data = new ArrayList<>();
+        adapter = new ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,list_data);//新建并配置ArrayAapeter
+        listView.setAdapter(adapter);
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
+                String target_host = ((TextView) view).getText().toString();
+                if (!target_host.contains("you")){
+                    try {
+                        byte []body = (target_host).getBytes();
+                        dataOut.writeShort(0x8964); // write magic
+                        dataOut.writeShort(message.MTYPE_PUNCH); // write type
+                        dataOut.writeInt(body.length); // write length
+                        dataOut.write(body);
+                        byte []data = byteOut.toByteArray();
+                        byteOut.reset();
+                        DatagramPacket datagramPacket = new DatagramPacket(data,data.length,InetAddress.getByName(target_host.split(":")[0]), Integer.parseInt(target_host.split(":")[1]));
+                        _sendQueue.add(datagramPacket);
+                        DatagramPacket datagramPacket1 = new DatagramPacket(data,data.length,serverAddress,port);
+                        _sendQueue.add(datagramPacket1);
+                        target_host_port=target_host;
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+                Toast.makeText(P2pActivity.this, "你点击了 " + target_host + " 按钮", Toast.LENGTH_SHORT).show();
+            }
+        });
+
         Button connBtn=(Button)findViewById(R.id.button);
-        Button burrowBtn=(Button)findViewById(R.id.button2);
-        Button sendBtn=(Button)findViewById(R.id.button3);
+        sendBtn=(Button)findViewById(R.id.button3);
         textView=(TextView) findViewById(R.id.textView);
         final EditText nameEditText=(EditText)findViewById(R.id.editText);
-        final EditText distEditText=(EditText)findViewById(R.id.editText2);
         final EditText sendEditText=(EditText)findViewById(R.id.editText3);
         connBtn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -113,62 +146,38 @@ public class P2pActivity extends AppCompatActivity {
                 try {
                     byte []body = (localAddr + " " + nameEditText.getText().toString()).getBytes();
                     dataOut.writeShort(0x8964); // write magic
-                    dataOut.writeShort(MTYPE_LOGIN); // write type
-                    dataOut.writeInt(body.length*8); // write length
+                    dataOut.writeShort(message.MTYPE_LOGIN); // write type
+                    dataOut.writeInt(body.length); // write length
                     dataOut.write(body);
                     byte []data = byteOut.toByteArray();
                     byteOut.reset();
                     DatagramPacket datagramPacket = new DatagramPacket(data,data.length,serverAddress,port);//指定发送数据、远程IP、远程端口
-                    boolean is =  _sendQueue.add(datagramPacket);//告诉server自己的name和本地ip，远程ip和端口server端是可以直接获取到的
-                    Log.i("", String.valueOf(is));
+                    _sendQueue.add(datagramPacket);//告诉server自己的name和本地ip，远程ip和端口server端是可以直接获取到的
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-            }
-        });
-        burrowBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                try {
-                    String values = distEditText.getText().toString();
-                    byte []body = (values).getBytes();
-                    dataOut.writeShort(0x8964); // write magic
-                    dataOut.writeShort(MTYPE_PUNCH); // write type
-                    dataOut.writeInt(body.length*8); // write length
-                    dataOut.write(body);
-                    byte []data = byteOut.toByteArray();
-                    byteOut.reset();
-
-                    DatagramPacket datagramPacket = new DatagramPacket(data,data.length,InetAddress.getByName(values.split(":")[0]), Integer.parseInt(values.split(":")[1]));//指定发送数据、远程IP、远程端口
-                    boolean is =  _sendQueue.add(datagramPacket);//告诉server自己的name和本地ip，远程ip和端口server端是可以直接获取到的
-                    DatagramPacket datagramPacket1 = new DatagramPacket(data,data.length,serverAddress,port);//指定发送数据、远程IP、远程端口
-                    boolean is1 =  _sendQueue.add(datagramPacket1);//告诉server自己的name和本地ip，远程ip和端口server端是可以直接获取到的
-                    Log.i("", String.valueOf(is1));
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-
             }
         });
         sendBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                try {
-                    String host_port = distEditText.getText().toString();
-                    String values = sendEditText.getText().toString();
-                    byte []body = (values).getBytes();
-                    dataOut.writeShort(0x8964); // write magic
-                    dataOut.writeShort(MTYPE_TEXT); // write type
-                    dataOut.writeInt(body.length*8); // write length
-                    dataOut.write(body);
-                    byte []data = byteOut.toByteArray();
-                    byteOut.reset();
+                if (target_host_port!=null){
+                    try {
+                        String host_port = target_host_port;
+                        String values = sendEditText.getText().toString();
+                        byte []body = (values).getBytes();
+                        dataOut.writeShort(0x8964); // write magic
+                        dataOut.writeShort(message.MTYPE_TEXT); // write type
+                        dataOut.writeInt(body.length); // write length
+                        dataOut.write(body);
+                        byte []data = byteOut.toByteArray();
+                        byteOut.reset();
 
-                    DatagramPacket datagramPacket = new DatagramPacket(data,data.length,InetAddress.getByName(host_port.split(":")[0]), Integer.parseInt(host_port.split(":")[1]));//指定发送数据、远程IP、远程端口
-                    boolean is =  _sendQueue.add(datagramPacket);//告诉server自己的name和本地ip，远程ip和端口server端是可以直接获取到的
-                    Log.i("", String.valueOf(is));
-                } catch (IOException e) {
-                    e.printStackTrace();
+                        DatagramPacket datagramPacket = new DatagramPacket(data,data.length,InetAddress.getByName(host_port.split(":")[0]), Integer.parseInt(host_port.split(":")[1]));//指定发送数据、远程IP、远程端口
+                        _sendQueue.add(datagramPacket);//告诉server自己的name和本地ip，远程ip和端口server端是可以直接获取到的
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
         });
@@ -187,7 +196,10 @@ public class P2pActivity extends AppCompatActivity {
                 try {
                     while(true){
                         DatagramPacket packet = _sendQueue.take(); //如果队列空了，一直阻塞
-                        Log.i("send", " " + serverAddress.getHostAddress()+ " " + port);
+                        P2pMessage p2pMessage = message.dealMessage(packet.getData());
+                        if (p2pMessage.type!=2) {
+                            Log.i("send", " " + packet.getAddress() + ":" + packet.getPort() + "  " + message.dealMessage(packet.getData()).toString());
+                        }
                         socket.send(packet);
                     }
                 } catch (InterruptedException e) {
@@ -208,26 +220,69 @@ public class P2pActivity extends AppCompatActivity {
                         byte[] data = new byte[1024];
                         DatagramPacket packet = new DatagramPacket(data, data.length);
                         socket.receive(packet);
-                        String result = new String(packet.getData(), packet.getOffset(), packet.getLength());
-                        Log.i("receive", result);
-                        if(result.charAt(0)=='0'&&result.charAt(1)=='0'&&result.charAt(2)=='2'){//收到Server发来的对方信息
-                            String[] strs=result.split(",");
-                            serverAddress = InetAddress.getByName(strs[1]);//不再发送数据到Server，而是到C1或者C2
-                            port=Integer.valueOf(strs[2]);//NAT上C1或C2的外网端口
-                            Timer timer=new Timer();
-                            timer.schedule(new TimerTask() {
-                                @Override
-                                public void run() {
-                                    _sendQueue.add(null);
-                                }
-                            },1000,1000);
+                        message.dealMessage(packet.getData());
+                        if (message.type!=6&&!message.body.contains("you")){
+                            Log.i("receive", " " + packet.getAddress() + ":" + packet.getPort() + "  " + message.toString());
                         }
-                        else if(result.charAt(0)=='0'&&result.charAt(1)=='0'&&result.charAt(2)=='3'){
-                            Log.i("ok", "123");// 验证P2P通信
-                            handler.sendEmptyMessage(1);
+                        if(message.verifyMagic()){//收到Server发来的对方信息
+                            if ((message.type==message.MTYPE_REPLY)&(message.body.equals("Login success!")|message.body.contains("Login failed"))) {
+                                byte[] body = ("").getBytes();
+                                dataOut.writeShort(0x8964); // write magic
+                                dataOut.writeShort(message.MTYPE_LIST); // write type
+                                dataOut.writeInt(body.length); // write length
+                                dataOut.write(body);
+                                final byte[] data1 = byteOut.toByteArray();
+                                final DatagramPacket datagramPacket = new DatagramPacket(data1, data1.length, serverAddress, port);//指定发送数据、远程IP、远程端口
+                                byteOut.reset();
+                                Timer timer = new Timer();
+                                timer.schedule(new TimerTask() {
+                                    @Override
+                                    public void run() {
+                                        _sendQueue.add(datagramPacket);
+                                    }
+                                }, 1000, 10000);
+                            }else if ((message.type==message.MTYPE_REPLY)&(message.body.contains("you"))){
+                                String hosts[] = message.body.split(";");
+                                for (String host:hosts){
+                                    if (!list_data.contains(host)){
+                                        list_data.add(host);
+                                    }
+                                }
+                                handler.sendEmptyMessage(3);
+                            }else if ((message.type==message.MTYPE_TEXT)&(message.body.contains("punch request sent"))) {
+                                Message mes = new Message();
+                                mes.what=4;
+                                mes.obj=target_host_port;
+                                handler.sendMessage(mes);
+                            }else if (message.type==message.MTYPE_PUNCH){
+                                // 判断消息是否来自服务器
+                                if (packet.getAddress().toString().equals(serverAddress.toString())&&packet.getPort()==port){
+                                    String host_port = message.body;
+                                    target_host_port = host_port;
+                                    byte []body = ("ok").getBytes();
+                                    dataOut.writeShort(0x8964); // write magic
+                                    dataOut.writeShort(message.MTYPE_REPLY); // write type
+                                    dataOut.writeInt(body.length); // write length
+                                    dataOut.write(body);
+                                    byte []data1 = byteOut.toByteArray();
+                                    byteOut.reset();
+                                    DatagramPacket datagramPacket = new DatagramPacket(data1,data1.length,InetAddress.getByName(host_port.split(":")[0]), Integer.parseInt(host_port.split(":")[1]));
+                                    _sendQueue.add(datagramPacket);
+                                    Message mes = new Message();
+                                    mes.what=4;
+                                    mes.obj=host_port;
+                                    handler.sendMessage(mes);
+                                }else {
+                                    Log.i("", "oooooooooooooooooookkkkkkkkkkkkkkkkkkkkkk");
+                                }
+                            }else {
+
+                            }
+                        }
+                        else {
+                            Log.i("验证", "magic 不一致");// 验证P2P通信
                         }
                         // handler.sendEmptyMessage(2);
-                        Log.i("ok", result+packet.getAddress()+packet.getPort());
                     }
                 } catch (UnknownHostException e) {
                     e.printStackTrace();
@@ -255,6 +310,12 @@ public class P2pActivity extends AppCompatActivity {
                 activity.textView.setText("P2P连接成功！");
             } else if (msg.what == 2) {
                 activity.textView.setText("非P2P连接");
+            } else if (msg.what == 3){
+                activity.adapter.notifyDataSetChanged();
+            }else if (msg.what == 4){
+                String name = String.format("发送: %s",(String) msg.obj);
+                activity.sendBtn.setText(name);
+                activity.sendBtn.setEnabled(true);
             }
         }
     }

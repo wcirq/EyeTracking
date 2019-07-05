@@ -23,21 +23,11 @@
         android:text="连接主服务器"
         tools:layout_editor_absoluteX="50dp"
         tools:layout_editor_absoluteY="97dp" />
-
-    <EditText
-        android:id="@+id/editText2"
+    <ListView
+        android:id="@+id/list_item"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:ems="10"
-        android:text="106.15.234.102:51284"
-        android:hint="请输入你要连接的名称"
-        android:inputType="textPersonName" />
-
-    <Button
-        android:id="@+id/button2"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="开始打洞" />
+        android:layout_height="wrap_content">
+    </ListView>
 
     <EditText
         android:id="@+id/editText3"
@@ -52,6 +42,7 @@
         android:id="@+id/button3"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:enabled="false"
         android:text="发送消息" />
 
     <TextView
